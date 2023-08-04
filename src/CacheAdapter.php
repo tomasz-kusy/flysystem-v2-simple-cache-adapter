@@ -18,13 +18,17 @@ class CacheAdapter implements FilesystemAdapter
     private $cachePool;
     /** @var array */
     private $cacheItems = [];
+    /** @var FilesystemAdapter|null */
+    private $localAdapter;
 
     public function __construct(
         FilesystemAdapter $adapter,
-        CacheItemPoolInterface $cachePool
+        CacheItemPoolInterface $cachePool,
+        ?FilesystemAdapter $localAdapter = null
     ) {
         $this->adapter = $adapter;
         $this->cachePool = $cachePool;
+        $this->localAdapter = $localAdapter;
     }
 
     private function getCacheItem(string $path): FilesystemCacheItem
@@ -88,45 +92,73 @@ class CacheAdapter implements FilesystemAdapter
             $metadata->setVisibility($visibility);
         }
         $item->save();
+
+        if ($this->localAdapter) {
+            $this->localAdapter->writeStream($path, $contents, $config);
+        }
     }
 
     public function read(string $path): string
     {
         $item = $this->getCacheItem($path);
+
+        if (!$item->exists()) {
+            $contents = $this->adapter->read($path);
+            $item->initialize()->save();
+            if ($this->localAdapter) {
+                $this->localAdapter->write($path, $contents, new Config());
+            }
+            return $contents;
+        }
+
+        if ($this->localAdapter) {
+            try {
+                return $this->localAdapter->read($path);
+            } catch (UnableToReadFile $exception) {}
+        }
+
         try {
             $contents = $this->adapter->read($path);
-
-            if (!$item->exists()) {
-                $item->initialize()->save();
-            }
-
-            return $contents;
         } catch (UnableToReadFile $exception) {
-            if ($item->exists()) {
-                $item->delete();
-            }
-
+            $item->delete();
             throw $exception;
         }
+
+        if ($this->localAdapter) {
+            $this->localAdapter->write($path, $contents, new Config());
+        }
+        return $contents;
     }
 
     public function readStream(string $path)
     {
         $item = $this->getCacheItem($path);
+
+        if (!$item->exists()) {
+            $contents = $this->adapter->readStream($path);
+            $item->initialize()->save();
+            if ($this->localAdapter) {
+                $this->localAdapter->writeStream($path, $contents, new Config());
+            }
+            return $contents;
+        }
+
+        if ($this->localAdapter) {
+            try {
+                return $this->localAdapter->readStream($path);
+            } catch (UnableToReadFile $exception) {}
+        }
+
         try {
             $contents = $this->adapter->readStream($path);
-
-            if (!$item->exists()) {
-                $item->initialize()->save();
-            }
-
-            return $contents;
         } catch (UnableToReadFile $exception) {
-            if ($item->exists()) {
-                $item->delete();
-            }
-
+            $item->delete();
             throw $exception;
+        }
+
+        if ($this->localAdapter) {
+            $this->localAdapter->writeStream($path, $contents, new Config());
+            return $this->localAdapter->readStream($path);
         }
     }
 
@@ -137,6 +169,10 @@ class CacheAdapter implements FilesystemAdapter
         $item = $this->getCacheItem($path);
         if ($item->exists()) {
             $item->delete();
+        }
+
+        if ($this->localAdapter) {
+            $this->localAdapter->delete($path);
         }
     }
 
@@ -153,11 +189,19 @@ class CacheAdapter implements FilesystemAdapter
         }
 
         $this->adapter->deleteDirectory($path);
+
+        if ($this->localAdapter) {
+            $this->localAdapter->deleteDirectory($path);
+        }
     }
 
     public function createDirectory(string $path, Config $config): void
     {
         $this->adapter->createDirectory($path, $config);
+
+        if ($this->localAdapter) {
+            $this->localAdapter->createDirectory($path, $config);
+        }
     }
 
     public function setVisibility(string $path, string $visibility): void
@@ -257,6 +301,10 @@ class CacheAdapter implements FilesystemAdapter
             $to->initialize()->setMetadata($from->load()->getMetadata())->save();
             $from->delete();
         }
+
+        if ($this->localAdapter) {
+            $this->localAdapter->move($source, $destination, $config);
+        }
     }
 
     public function copy(string $source, string $destination, Config $config): void
@@ -267,6 +315,10 @@ class CacheAdapter implements FilesystemAdapter
         if ($from->exists()) {
             $to = $this->getCacheItem($destination);
             $to->initialize()->setMetadata($from->load()->getMetadata())->save();
+        }
+
+        if ($this->localAdapter) {
+            $this->adapter->copy($source, $destination, $config);
         }
     }
 }
