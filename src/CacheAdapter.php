@@ -79,6 +79,10 @@ class CacheAdapter implements FilesystemAdapter
             $metadata->setVisibility($visibility);
         }
         $item->save();
+
+        if ($this->localAdapter) {
+            $this->localAdapter->write($path, $contents, $config);
+        }
     }
 
     public function writeStream(string $path, $contents, Config $config): void
@@ -94,6 +98,7 @@ class CacheAdapter implements FilesystemAdapter
         $item->save();
 
         if ($this->localAdapter) {
+            rewind($contents);
             $this->localAdapter->writeStream($path, $contents, $config);
         }
     }
@@ -139,6 +144,7 @@ class CacheAdapter implements FilesystemAdapter
             $item->initialize()->save();
             if ($this->localAdapter) {
                 $this->localAdapter->writeStream($path, $contents, new Config());
+                rewind($contents);
             }
             return $contents;
         }
@@ -160,6 +166,7 @@ class CacheAdapter implements FilesystemAdapter
             $this->localAdapter->writeStream($path, $contents, new Config());
             return $this->localAdapter->readStream($path);
         }
+        return $contents;
     }
 
     public function delete(string $path): void
