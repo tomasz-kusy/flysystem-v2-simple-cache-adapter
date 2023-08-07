@@ -98,7 +98,7 @@ class CacheAdapter implements FilesystemAdapter
         $item->save();
 
         if ($this->localAdapter) {
-            rewind($contents);
+            $this->rewindStream($contents);
             $this->localAdapter->writeStream($path, $contents, $config);
         }
     }
@@ -144,7 +144,7 @@ class CacheAdapter implements FilesystemAdapter
             $item->initialize()->save();
             if ($this->localAdapter) {
                 $this->localAdapter->writeStream($path, $contents, new Config());
-                rewind($contents);
+                $this->rewindStream($contents);
             }
             return $contents;
         }
@@ -326,6 +326,13 @@ class CacheAdapter implements FilesystemAdapter
 
         if ($this->localAdapter) {
             $this->adapter->copy($source, $destination, $config);
+        }
+    }
+
+    private function rewindStream($resource): void
+    {
+        if (ftell($resource) !== 0 && stream_get_meta_data($resource)['seekable']) {
+            rewind($resource);
         }
     }
 }
